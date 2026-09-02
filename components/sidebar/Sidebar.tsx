@@ -252,10 +252,10 @@ export function Sidebar({
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-textPrimary">
-                    Academic User
+                    Om Deshmukh
                   </div>
                   <div className="text-xs text-emerald-500 font-medium">
-                    OmniChat Pro
+                    OmniChat Creater
                   </div>
                 </div>
               </div>

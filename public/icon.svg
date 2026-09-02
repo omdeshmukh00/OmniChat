@@ -1,0 +1,8 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="128" fill="#0f0f11"/>
+  <rect x="96" y="96" width="320" height="320" rx="64" fill="#022c22" stroke="#065f46" stroke-width="16"/>
+  <!-- Primary Sparkle -->
+  <path d="M256 160C256 210 270 240 320 256C270 272 256 302 256 352C256 302 242 272 192 256C242 240 256 210 256 160Z" fill="#10b981"/>
+  <!-- Secondary Accent Sparkle -->
+  <path d="M345 140C345 162 352 175 375 182C352 189 345 202 345 224C345 202 338 189 315 182C338 175 345 162 345 140Z" fill="#34d399"/>
+</svg>
