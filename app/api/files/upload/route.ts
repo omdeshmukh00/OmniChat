@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const dataBase64 = buffer.toString("base64");
     let extractedText = "";
 
     // Extract text content for supported text/document formats
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
       sizeBytes: file.size,
       storageProvider: "memory",
       storageKey: validated.storageKey,
+      dataBase64,
       extractedText,
       status: "ready",
     });
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
         mimeType: asset.mimeType,
         sizeBytes: asset.sizeBytes,
         extractedText: asset.extractedText,
+        dataBase64,
       },
     });
   } catch (err) {

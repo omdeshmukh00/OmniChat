@@ -47,10 +47,10 @@ export class GeminiProvider extends AIProvider {
         isDefault: true,
       },
       {
-        id: "gemini-3.6-flash",
-        name: "Gemini 3.6 Flash",
+        id: "gemini-1.5-flash",
+        name: "Gemini 1.5 Flash",
         provider: this.id,
-        description: "Google's latest flagship multimodal model",
+        description: "Google's stable high-speed multimodal vision model",
         capabilities: this.capabilities,
         contextWindow: 1000000,
         maxOutputTokens: 8192,
@@ -71,7 +71,7 @@ export class GeminiProvider extends AIProvider {
         if (c.text) parts.push({ text: c.text });
       }
 
-      // Include attached image binary data as inlineData for Vision capabilities
+      // Include attached image binary data as inlineData & document text for Vision/Doc capabilities
       if (isLastUserMsg && request.attachments && request.attachments.length > 0) {
         for (const file of request.attachments) {
           if (file.dataBase64) {
@@ -80,6 +80,11 @@ export class GeminiProvider extends AIProvider {
                 mimeType: file.mimeType || "image/png",
                 data: file.dataBase64,
               },
+            });
+          }
+          if (file.extractedText) {
+            parts.push({
+              text: `\n\n[Attached File Content: ${file.name}]\n${file.extractedText}`,
             });
           }
         }
@@ -104,45 +109,47 @@ export class GeminiProvider extends AIProvider {
     }
 
     const env = getServerEnv();
-    const model = request.model || "gemini-3.6-flash";
+    const primaryModel = request.model || "gemini-3.6-flash";
+    const candidateModels = Array.from(
+      new Set([primaryModel, "gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"])
+    );
     const contents = this.formatContents(request);
     const startTime = Date.now();
 
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GOOGLE_GENERATIVE_AI_API_KEY}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents }),
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new AppError({
-          code: "PROVIDER_ERROR",
-          message: errJson.error?.message || `Gemini API error HTTP ${res.status}`,
-          statusCode: res.status,
+    let lastErrorMsg = "";
+    for (const m of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${env.GOOGLE_GENERATIVE_AI_API_KEY}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents }),
         });
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          return {
+            provider: this.id,
+            model: m,
+            text,
+            finishReason: "stop",
+            latencyMs: Date.now() - startTime,
+          };
+        } else {
+          const errJson = await res.json().catch(() => ({}));
+          lastErrorMsg = errJson.error?.message || `Gemini API HTTP ${res.status}`;
+        }
+      } catch (err: any) {
+        lastErrorMsg = err?.message || "Request failed";
       }
-
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-      return {
-        provider: this.id,
-        model,
-        text,
-        finishReason: "stop",
-        latencyMs: Date.now() - startTime,
-      };
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      throw new AppError({
-        code: "PROVIDER_ERROR",
-        message: err instanceof Error ? err.message : "Gemini API request failed",
-        statusCode: 500,
-      });
     }
+
+    throw new AppError({
+      code: "PROVIDER_ERROR",
+      message: lastErrorMsg || "Gemini API request failed",
+      statusCode: 500,
+    });
   }
 
   public async *stream(request: AIRequest): AsyncIterable<AIChunk> {
@@ -163,80 +170,85 @@ export class GeminiProvider extends AIProvider {
     }
 
     const env = getServerEnv();
-    const model = request.model || "gemini-3.6-flash";
+    const primaryModel = request.model || "gemini-3.6-flash";
+    const candidateModels = Array.from(
+      new Set([primaryModel, "gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"])
+    );
     const contents = this.formatContents(request);
 
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${env.GOOGLE_GENERATIVE_AI_API_KEY}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents }),
+    let res: Response | null = null;
+    let activeModel = primaryModel;
+    let lastErrorMsg = "";
+
+    for (const m of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:streamGenerateContent?alt=sse&key=${env.GOOGLE_GENERATIVE_AI_API_KEY}`;
+        const attemptRes = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents }),
+        });
+
+        if (attemptRes.ok && attemptRes.body) {
+          res = attemptRes;
+          activeModel = m;
+          break;
+        } else {
+          const errJson = await attemptRes.json().catch(() => ({}));
+          lastErrorMsg = errJson.error?.message || `Gemini API HTTP ${attemptRes.status}`;
+          console.warn(`Gemini model ${m} notice (${attemptRes.status}): ${lastErrorMsg}. Trying fallback...`);
+        }
+      } catch (err: any) {
+        lastErrorMsg = err?.message || "Stream attempt failed";
+      }
+    }
+
+    if (!res || !res.body) {
+      throw new AppError({
+        code: "PROVIDER_ERROR",
+        message: lastErrorMsg || "All Gemini candidate models are currently experiencing high demand. Please try again in a moment.",
+        statusCode: 503,
       });
+    }
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new AppError({
-          code: "PROVIDER_ERROR",
-          message: errJson.error?.message || `Gemini API stream error HTTP ${res.status}`,
-          statusCode: res.status,
-        });
-      }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
-      if (!res.body) {
-        throw new AppError({
-          code: "STREAM_ERROR",
-          message: "Gemini response stream body is empty",
-          statusCode: 500,
-        });
-      }
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const json = JSON.parse(line.substring(6));
-              const text = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
-              if (text) {
-                yield {
-                  provider: this.id,
-                  model,
-                  textDelta: text,
-                  isComplete: false,
-                };
-              }
-            } catch {
-              // Ignore partial JSON lines
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const json = JSON.parse(line.substring(6));
+            const text = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            if (text) {
+              yield {
+                provider: this.id,
+                model: activeModel,
+                textDelta: text,
+                isComplete: false,
+              };
             }
+          } catch {
+            // Ignore partial JSON lines
           }
         }
       }
-
-      yield {
-        provider: this.id,
-        model,
-        textDelta: "",
-        isComplete: true,
-        finishReason: "stop",
-      };
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      throw new AppError({
-        code: "PROVIDER_ERROR",
-        message: err instanceof Error ? err.message : "Gemini stream failed",
-        statusCode: 500,
-      });
     }
+
+    yield {
+      provider: this.id,
+      model: activeModel,
+      textDelta: "",
+      isComplete: true,
+      finishReason: "stop",
+    };
   }
 }

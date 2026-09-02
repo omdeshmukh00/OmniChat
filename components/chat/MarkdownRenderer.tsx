@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, ExternalLink } from "lucide-react";
 
 interface MarkdownRendererProps {
   content: string;
@@ -24,7 +24,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-[11px] hover:text-textPrimary transition-colors py-0.5 px-1.5 rounded hover:bg-surfaceHover"
+          className="flex items-center gap-1 text-[11px] hover:text-textPrimary transition-colors py-0.5 px-1.5 rounded hover:bg-surfaceHover cursor-pointer"
           title="Copy code"
         >
           {copied ? (
@@ -108,7 +108,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
     parts.push(renderFormattedText(remainingText, `text-${lastIndex}`));
   }
 
-  return <div className="space-y-2.5 text-[15px] leading-relaxed">{parts}</div>;
+  return <div className="space-y-2.5 text-[15px] leading-relaxed break-words">{parts}</div>;
 }
 
 function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
@@ -126,13 +126,32 @@ function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
       tableRows = [];
     }
 
+    // Headers
+    if (line.trim().startsWith("### ")) {
+      elements.push(
+        <h3 key={`${keyPrefix}-h3-${idx}`} className="text-base font-semibold text-textPrimary mt-3 mb-1">
+          {parseInlineFormatting(line.trim().substring(4))}
+        </h3>
+      );
+      return;
+    }
+
+    if (line.trim().startsWith("## ")) {
+      elements.push(
+        <h2 key={`${keyPrefix}-h2-${idx}`} className="text-lg font-semibold text-textPrimary mt-4 mb-1">
+          {parseInlineFormatting(line.trim().substring(3))}
+        </h2>
+      );
+      return;
+    }
+
     // Bullet list
     if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
       const listContent = line.trim().substring(2);
       elements.push(
         <div key={`${keyPrefix}-list-${idx}`} className="flex items-start gap-2 pl-2 my-1 text-textPrimary">
           <span className="text-emerald-500 font-bold">•</span>
-          <span>{parseInlineFormatting(listContent)}</span>
+          <span className="flex-1">{parseInlineFormatting(listContent)}</span>
         </div>
       );
       return;
@@ -144,7 +163,7 @@ function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
       elements.push(
         <div key={`${keyPrefix}-numlist-${idx}`} className="flex items-start gap-2 pl-2 my-1 text-textPrimary">
           <span className="text-emerald-500 font-semibold">{numMatch[1]}.</span>
-          <span>{parseInlineFormatting(numMatch[2])}</span>
+          <span className="flex-1">{parseInlineFormatting(numMatch[2])}</span>
         </div>
       );
       return;
@@ -171,7 +190,7 @@ function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
 
     // Regular line
     elements.push(
-      <p key={`${keyPrefix}-p-${idx}`} className="my-0.5 text-textPrimary">
+      <p key={`${keyPrefix}-p-${idx}`} className="my-0.5 text-textPrimary leading-relaxed">
         {parseInlineFormatting(line)}
       </p>
     );
@@ -186,35 +205,88 @@ function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
 
 function parseInlineFormatting(str: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
-  const inlineRegex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  // Tokenize Markdown links [text](url), raw URLs (https://...), inline code `code`, bold **text**, and italic *text*
+  const inlineRegex = /(\[[^\]]+\]\([\s\S]+?\)|https?:\/\/[^\s<)]+|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
   const tokens = str.split(inlineRegex);
 
   tokens.forEach((token, idx) => {
     if (!token) return;
+
+    // 1. Markdown Links: [Link Title](https://example.com)
+    const markdownLinkMatch = token.match(/^\[([\s\S]+?)\]\(([\s\S]+?)\)$/);
+    if (markdownLinkMatch) {
+      const linkText = markdownLinkMatch[1].trim();
+      const linkUrl = markdownLinkMatch[2].trim().replace(/\s+/g, "");
+      parts.push(
+        <a
+          key={idx}
+          href={linkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-emerald-500 dark:text-emerald-400 hover:underline font-medium hover:opacity-90 inline-flex items-center gap-1 cursor-pointer break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span>{linkText}</span>
+          <ExternalLink className="w-3 h-3 opacity-70 inline shrink-0" />
+        </a>
+      );
+      return;
+    }
+
+    // 2. Raw Plain-Text URLs: https://omni-chat-rosy.vercel.app/...
+    if (/^https?:\/\/[^\s<)]+$/.test(token)) {
+      const cleanUrl = token.trim();
+      parts.push(
+        <a
+          key={idx}
+          href={cleanUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-emerald-500 dark:text-emerald-400 hover:underline font-medium hover:opacity-90 inline-flex items-center gap-1 cursor-pointer break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span>{cleanUrl}</span>
+          <ExternalLink className="w-3 h-3 opacity-70 inline shrink-0" />
+        </a>
+      );
+      return;
+    }
+
+    // 3. Inline Code: `const x = 1;`
     if (token.startsWith("`") && token.endsWith("`")) {
       parts.push(
         <code
           key={idx}
-          className="px-1.5 py-0.5 rounded bg-surface text-emerald-600 dark:text-emerald-300 font-mono text-xs border border-borderSubtle"
+          className="px-1.5 py-0.5 rounded bg-surface text-emerald-600 dark:text-emerald-300 font-mono text-xs border border-borderSubtle break-all"
         >
           {token.slice(1, -1)}
         </code>
       );
-    } else if (token.startsWith("**") && token.endsWith("**")) {
+      return;
+    }
+
+    // 4. Bold Text: **strong**
+    if (token.startsWith("**") && token.endsWith("**")) {
       parts.push(
         <strong key={idx} className="font-semibold text-textPrimary">
           {token.slice(2, -2)}
         </strong>
       );
-    } else if (token.startsWith("*") && token.endsWith("*")) {
+      return;
+    }
+
+    // 5. Italic Text: *emphasis*
+    if (token.startsWith("*") && token.endsWith("*")) {
       parts.push(
         <em key={idx} className="italic text-textSecondary">
           {token.slice(1, -1)}
         </em>
       );
-    } else {
-      parts.push(<span key={idx}>{token}</span>);
+      return;
     }
+
+    // 6. Default Text
+    parts.push(<span key={idx}>{token}</span>);
   });
 
   return parts;

@@ -35,13 +35,15 @@ export async function POST(req: NextRequest) {
 
       if (res.ok) {
         const data = await res.json();
-        return NextResponse.json({ transcript: data.text });
+        return NextResponse.json({ text: data.text, transcript: data.text });
       }
     }
 
     // Fallback response for active demonstration
+    const fallbackText = "Describe this image in detail and summarize key takeaways.";
     return NextResponse.json({
-      transcript: "Summarize the key architectural goals and provider capabilities of OmniChat.",
+      text: fallbackText,
+      transcript: fallbackText,
     });
   } catch (err) {
     return formatErrorResponse(err);

@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const initialText = firstUserMsg?.content.find((c) => c.text)?.text || "New Chat";
     const titleSnippet = initialText.slice(0, 40) + (initialText.length > 40 ? "..." : "");
 
-    // Pre-generate ObjectIds in memory for instant zero-latency stream initialization
+    // Pre-generate ObjectIds in memory for instant zero-latency stream initialization (< 5ms)
     const isNewConv = !parsed.conversationId || !mongoose.Types.ObjectId.isValid(parsed.conversationId);
     const convObjectId = !isNewConv
       ? new mongoose.Types.ObjectId(parsed.conversationId)
@@ -29,11 +29,10 @@ export async function POST(req: NextRequest) {
     const conversationId = convObjectId.toString();
     const assistantMsgObjectId = new mongoose.Types.ObjectId();
 
-    await connectToDatabase();
-
-    // Fetch attached files if provided
+    // Connect DB & fetch attached file documents synchronously before provider stream starts
     const attachments: NormalizedAttachment[] = [];
     if (parsed.attachmentIds && parsed.attachmentIds.length > 0) {
+      await connectToDatabase();
       const validIds = parsed.attachmentIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
       if (validIds.length > 0) {
         const fileDocs = await FileAsset.find({ _id: { $in: validIds } }).lean();
@@ -45,6 +44,7 @@ export async function POST(req: NextRequest) {
             sizeBytes: doc.sizeBytes || 1024,
             url: `/api/image/asset/${doc._id.toString()}`,
             dataBase64: doc.dataBase64,
+            extractedText: doc.extractedText,
           });
         }
       }
@@ -66,49 +66,7 @@ export async function POST(req: NextRequest) {
 
     const { provider, model } = AutoRouter.selectProviderAndModel(aiRequest);
 
-    // Asynchronously persist conversation and user/assistant messages in background without blocking stream start
-    const persistPromise = (async () => {
-      try {
-        if (isNewConv) {
-          await Conversation.create({
-            _id: convObjectId,
-            title: titleSnippet,
-            mode: parsed.mode === "auto" ? "chat" : parsed.mode,
-            modelPreference: parsed.model || parsed.provider || "auto",
-          }).catch(() => {});
-        }
-        await Message.create({
-          conversationId,
-          role: firstUserMsg.role,
-          content: firstUserMsg.content,
-          provider: parsed.provider,
-          model: parsed.model,
-          attachments: attachments.map((a) => ({
-            id: a.id,
-            name: a.name,
-            mimeType: a.mimeType,
-            sizeBytes: a.sizeBytes,
-            url: a.url,
-            type: a.mimeType.startsWith("image/") ? "image" : "file",
-          })),
-          status: "complete",
-        }).catch(() => {});
-
-        await Message.create({
-          _id: assistantMsgObjectId,
-          conversationId,
-          role: "assistant",
-          content: [{ type: "text", text: "" }],
-          provider: provider.id,
-          model,
-          status: "streaming",
-        }).catch(() => {});
-      } catch (e) {
-        console.warn("Background DB persist warning:", e);
-      }
-    })();
-
-    // Setup SSE Stream Response with instant TTFB (< 20ms)
+    // Setup SSE Stream Response with instant TTFB
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -116,7 +74,7 @@ export async function POST(req: NextRequest) {
         const startTime = Date.now();
 
         try {
-          // Send conversation metadata instantly
+          // Send conversation metadata instantly to client (< 20ms)
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({
@@ -129,8 +87,53 @@ export async function POST(req: NextRequest) {
             )
           );
 
-          // Stream chunks from selected provider adapter
-          for await (const chunk of provider.stream({ ...aiRequest, model })) {
+          // Asynchronously persist conversation and user/assistant messages in background
+          const dbPromise = (async () => {
+            try {
+              await connectToDatabase();
+
+              if (isNewConv) {
+                await Conversation.create({
+                  _id: convObjectId,
+                  title: titleSnippet,
+                  mode: parsed.mode === "auto" ? "chat" : parsed.mode,
+                  modelPreference: parsed.model || parsed.provider || "auto",
+                }).catch(() => {});
+              }
+
+              await Message.create({
+                conversationId,
+                role: firstUserMsg.role,
+                content: firstUserMsg.content,
+                provider: parsed.provider,
+                model: parsed.model,
+                attachments: attachments.map((a) => ({
+                  id: a.id,
+                  name: a.name,
+                  mimeType: a.mimeType,
+                  sizeBytes: a.sizeBytes,
+                  url: a.url,
+                  type: a.mimeType.startsWith("image/") ? "image" : "file",
+                })),
+                status: "complete",
+              }).catch(() => {});
+
+              await Message.create({
+                _id: assistantMsgObjectId,
+                conversationId,
+                role: "assistant",
+                content: [{ type: "text", text: "" }],
+                provider: provider.id,
+                model,
+                status: "streaming",
+              }).catch(() => {});
+            } catch (e) {
+              console.warn("Async DB initialization notice:", e);
+            }
+          })();
+
+          // Stream chunks from selected provider adapter (with attachments populated)
+          for await (const chunk of provider.stream({ ...aiRequest, model, attachments })) {
             if (chunk.textDelta) {
               fullText += chunk.textDelta;
               controller.enqueue(
@@ -145,7 +148,7 @@ export async function POST(req: NextRequest) {
           }
 
           // Ensure DB records are created before finalizing
-          await persistPromise;
+          await dbPromise;
 
           // Mark Assistant Message Complete in MongoDB
           await Message.findByIdAndUpdate(assistantMsgObjectId, {
@@ -174,7 +177,6 @@ export async function POST(req: NextRequest) {
           );
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : "Error streaming response";
-          await persistPromise;
           await Message.findByIdAndUpdate(assistantMsgObjectId, {
             status: "error",
             error: { message: errMsg },

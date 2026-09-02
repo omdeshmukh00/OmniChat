@@ -44,6 +44,9 @@ export default function Home({ initialConversationId = "" }: HomeProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [pendingComposerMode, setPendingComposerMode] = useState<"chat" | "image" | "search">("chat");
+  const [pendingComposerInput, setPendingComposerInput] = useState<string>("");
+  const [filePickerNonce, setFilePickerNonce] = useState<number>(0);
+  const [focusNonce, setFocusNonce] = useState<number>(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -156,6 +159,7 @@ export default function Home({ initialConversationId = "" }: HomeProps) {
     setMessages([]);
     setActiveConversationId("");
     setPendingComposerMode("chat");
+    setPendingComposerInput("");
     navigateTo("/");
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setSidebarOpen(false);
@@ -163,12 +167,22 @@ export default function Home({ initialConversationId = "" }: HomeProps) {
   };
 
   const handleQuickAction = (actionId: string) => {
-    if (actionId === "create_image") {
+    if (actionId === "analyze_doc") {
+      setPendingComposerInput("Analyze PDF and summarize key insights");
+      setFilePickerNonce(Date.now());
+      setFocusNonce(Date.now());
+    } else if (actionId === "create_image") {
       setPendingComposerMode("image");
+      setFocusNonce(Date.now());
     } else if (actionId === "web_search") {
       setPendingComposerMode("search");
+      setFocusNonce(Date.now());
+    } else if (actionId === "general_chat") {
+      setPendingComposerMode("chat");
+      setFocusNonce(Date.now());
     } else {
       setPendingComposerMode("chat");
+      setFocusNonce(Date.now());
     }
   };
 
@@ -329,7 +343,7 @@ export default function Home({ initialConversationId = "" }: HomeProps) {
       return;
     }
 
-    // 2. WEB SEARCH Intent Route (Real AI synthesis with live web citation links)
+    // 2. WEB SEARCH Intent Route (Real-Time Grounded Search Synthesis)
     let extraSearchContext = "";
     if (detectedIntent === "WEB_SEARCH") {
       try {
@@ -339,15 +353,18 @@ export default function Home({ initialConversationId = "" }: HomeProps) {
         const data = await searchRes.json();
         if (data.results && data.results.length > 0) {
           extraSearchContext = `\n\n### 🌐 LIVE RETRIEVED WEB FINDINGS FOR "${text}":\n${data.results
-            .map((r: any) => `- **[${r.title}](${r.url})**\n  *Snippet:* ${r.snippet}\n  *Source Domain:* [${r.domain}](${r.url})`)
-            .join("\n\n")}\n\n*INSTRUCTION:* Synthesize a factual, complete answer to the user's prompt using the web search context above. At the end of your response, list the sources under a '### 🌐 Clickable Sources' heading using markdown format \`[domain](url)\`.`;
+            .map((r: any) => `- **Title:** [${r.title}](${r.url})\n  *Snippet:* ${r.snippet}\n  *Source Domain:* [${r.domain}](${r.url})`)
+            .join("\n\n")}\n\n*CRITICAL REAL-TIME GROUNDING INSTRUCTION:*
+1. Synthesize an accurate, factual response based strictly on the live web search findings above.
+2. Pay close attention to recent transfers, successions, new appointments, or current active officeholders (e.g. if someone assumed charge or succeeded a predecessor, report the NEW current active official).
+3. At the end of your response under a '### 🌐 Clickable Sources' heading, list the sources using format \`[domain](url)\`.`;
         }
       } catch (err) {
         console.warn("Search retriever notice:", err);
       }
     }
 
-    // 3. Standard / Multimodal Vision / Chat Route (Real-Time SSE Streaming)
+    // 3. Standard / Multimodal Vision / Chat Route
     const assistantMsgId = Math.random().toString(36).substring(2, 9);
     const initialAssistantMsg: MessageUI = {
       id: assistantMsgId,
@@ -537,6 +554,9 @@ export default function Home({ initialConversationId = "" }: HomeProps) {
             onStopStream={handleStopStream}
             isStreaming={isStreaming}
             externalMode={pendingComposerMode}
+            externalInput={pendingComposerInput}
+            triggerFilePickerNonce={filePickerNonce}
+            focusNonce={focusNonce}
           />
         </div>
       </main>

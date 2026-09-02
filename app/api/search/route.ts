@@ -24,43 +24,44 @@ async function executeSearch(query: string) {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
+      signal: AbortSignal.timeout(2500), // 2.5s timeout for rich live search
     });
 
     if (res.ok) {
       const html = await res.text();
-      const titleMatches = [...html.matchAll(/<a class="result__url"[^>]*href="([^"]+)"[^>]*>\s*([^<]+)/g)];
-      const snippetMatches = [...html.matchAll(/<a class="result__snippet[^">]*>([\s\S]*?)<\/a>/g)];
+      const titleMatches = [...html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
+      const snippetMatches = [...html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)];
 
-      for (let i = 0; i < Math.min(titleMatches.length, 4); i++) {
-        const rawUrl = titleMatches[i][1];
-        let cleanUrl = rawUrl;
+      for (let i = 0; i < Math.min(titleMatches.length, 6); i++) {
+        let rawUrl = titleMatches[i][1];
         if (rawUrl.includes("uddg=")) {
           const match = rawUrl.match(/uddg=([^&]+)/);
-          if (match) cleanUrl = decodeURIComponent(match[1]);
+          if (match) rawUrl = decodeURIComponent(match[1]);
         }
+        const titleText = titleMatches[i][2].replace(/<[^>]+>/g, "").trim();
         const snippetText = snippetMatches[i]
-          ? snippetMatches[i][1].replace(/<[^>]+>/g, "").trim()
+          ? snippetMatches[i][1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
           : "";
         let domain = "web";
         try {
-          domain = new URL(cleanUrl).hostname.replace(/^www\./, "");
+          domain = new URL(rawUrl).hostname.replace(/^www\./, "");
         } catch {}
 
-        if (cleanUrl.startsWith("http")) {
+        if (rawUrl.startsWith("http")) {
           results.push({
-            title: titleMatches[i][2].trim(),
-            url: cleanUrl,
-            snippet: snippetText || `Live information and web search details for ${cleanQuery}.`,
+            title: titleText,
+            url: rawUrl,
+            snippet: snippetText || `Live web search findings for ${cleanQuery}.`,
             domain,
           });
         }
       }
     }
   } catch (err) {
-    console.warn("Live web search fetch notice:", err);
+    console.warn("Fast web search retriever notice:", err);
   }
 
-  // Fallback if live search returns zero results
+  // Instant structured fallback if live search times out or returns zero items
   if (results.length === 0) {
     const isFinance = /stock|share|price|market|mrf|reliance|crypto|nifty|sensex|ticker|financial/i.test(lower);
     if (isFinance) {

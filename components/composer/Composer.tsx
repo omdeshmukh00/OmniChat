@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, ChangeEvent, KeyboardEvent, useEffect } from "react";
+import { useState, useRef, ChangeEvent, KeyboardEvent, useEffect, ClipboardEvent } from "react";
 import {
   Plus,
   Mic,
@@ -29,6 +29,8 @@ interface ComposerProps {
   isStreaming?: boolean;
   externalMode?: "chat" | "image" | "search";
   externalInput?: string;
+  triggerFilePickerNonce?: number;
+  focusNonce?: number;
 }
 
 export function Composer({
@@ -37,6 +39,8 @@ export function Composer({
   isStreaming,
   externalMode = "chat",
   externalInput,
+  triggerFilePickerNonce,
+  focusNonce,
 }: ComposerProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"chat" | "image" | "search">("chat");
@@ -50,8 +54,9 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusButtonRef = useRef<HTMLButtonElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<any>(null);
 
-  // Sync external mode selection (e.g. from welcome cards or plus menu)
+  // Sync external mode selection
   useEffect(() => {
     if (externalMode) {
       setMode(externalMode);
@@ -59,13 +64,28 @@ export function Composer({
     }
   }, [externalMode]);
 
-  // Sync external input text if provided
+  // Sync external input text
   useEffect(() => {
     if (externalInput !== undefined) {
       setInput(externalInput);
       textareaRef.current?.focus();
     }
   }, [externalInput]);
+
+  // Handle external file picker trigger
+  useEffect(() => {
+    if (triggerFilePickerNonce) {
+      fileInputRef.current?.click();
+      textareaRef.current?.focus();
+    }
+  }, [triggerFilePickerNonce]);
+
+  // Handle external focus trigger
+  useEffect(() => {
+    if (focusNonce) {
+      textareaRef.current?.focus();
+    }
+  }, [focusNonce]);
 
   const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -89,6 +109,55 @@ export function Composer({
     }
   };
 
+  const handlePaste = async (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of Array.from(items)) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        const ext = file.type.split("/")[1] || "png";
+        const fileName =
+          file.name && file.name !== "image.png"
+            ? file.name
+            : `pasted-image-${Date.now()}.${ext}`;
+
+        const localFile: AttachedFile = {
+          id: Math.random().toString(36).substring(2, 9),
+          name: fileName,
+          type: file.type || "image/png",
+          size: file.size,
+          previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+        };
+
+        setAttachedFiles((prev) => [...prev, localFile]);
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file, fileName);
+
+          const res = await fetch("/api/files/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            setAttachedFiles((prev) =>
+              prev.map((item) =>
+                item.id === localFile.id ? { ...item, id: data.file.id } : item
+              )
+            );
+          }
+        } catch (err) {
+          console.warn("Pasted file upload notice:", err);
+        }
+      }
+    }
+  };
+
   const handleSubmit = () => {
     if (isStreaming) {
       if (onStopStream) onStopStream();
@@ -99,7 +168,7 @@ export function Composer({
     onSend(input, finalMode, attachedFiles);
     setInput("");
     setAttachedFiles([]);
-    setMode("chat"); // Reset mode to AUTO / chat after sending
+    setMode("chat");
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -162,66 +231,130 @@ export function Composer({
 
   const toggleRecording = async () => {
     if (isRecording) {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {}
+        recognitionRef.current = null;
       }
-    } else {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {}
+      }
+      setIsRecording(false);
+      setRecordingStatus("");
+      return;
+    }
+
+    // 1. Try Browser Native Web Speech API for instant live speech-to-text typing
+    const SpeechRecognition =
+      typeof window !== "undefined"
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (SpeechRecognition) {
       try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mediaRecorder = new MediaRecorder(stream);
-          mediaRecorderRef.current = mediaRecorder;
-          const chunks: Blob[] = [];
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = typeof navigator !== "undefined" ? navigator.language || "en-US" : "en-US";
 
-          mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) chunks.push(e.data);
-          };
+        const baseInput = input.trim();
 
-          mediaRecorder.onstop = async () => {
-            stream.getTracks().forEach((track) => track.stop());
-            const audioBlob = new Blob(chunks, { type: "audio/webm" });
-            setRecordingStatus("Transcribing...");
-            try {
-              const formData = new FormData();
-              formData.append("audio", audioBlob, "recording.webm");
-
-              const res = await fetch("/api/audio/transcribe", {
-                method: "POST",
-                body: formData,
-              });
-
-              if (res.ok) {
-                const data = await res.json();
-                if (data.text) {
-                  setInput((prev) => (prev ? `${prev} ${data.text}` : data.text));
-                }
-              }
-            } catch (err) {
-              console.warn("Transcription error:", err);
-            } finally {
-              setRecordingStatus("");
-              setIsRecording(false);
-            }
-          };
-
-          mediaRecorder.start();
+        recognition.onstart = () => {
           setIsRecording(true);
-          setRecordingStatus("Listening...");
-        } else {
-          setIsRecording(true);
-          setRecordingStatus("Voice input active...");
-          setTimeout(() => {
+          setRecordingStatus("Listening to your voice...");
+        };
+
+        recognition.onresult = (event: any) => {
+          let transcriptText = "";
+          for (let i = 0; i < event.results.length; i++) {
+            transcriptText += event.results[i][0].transcript;
+          }
+          const combined = baseInput
+            ? `${baseInput} ${transcriptText.trim()}`
+            : transcriptText.trim();
+          setInput(combined);
+          if (textareaRef.current) {
+            textareaRef.current.style.height = "auto";
+            textareaRef.current.style.height = `${Math.min(
+              textareaRef.current.scrollHeight,
+              200
+            )}px`;
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          console.warn("Web Speech API notice:", event.error);
+          if (event.error !== "no-speech") {
             setIsRecording(false);
             setRecordingStatus("");
-            if (!input.trim()) {
-              setInput("Summarize key takeaways from the latest research paper.");
-            }
-          }, 2500);
-        }
+          }
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+          setRecordingStatus("");
+          recognitionRef.current = null;
+        };
+
+        recognition.start();
+        return;
       } catch (err) {
-        console.warn("Microphone access error:", err);
-        setIsRecording(false);
+        console.warn("SpeechRecognition init notice:", err);
       }
+    }
+
+    // 2. Fallback to MediaRecorder + API audio transcribe if WebSpeech is unavailable
+    try {
+      if (typeof navigator !== "undefined" && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        const chunks: Blob[] = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const audioBlob = new Blob(chunks, { type: "audio/webm" });
+          setRecordingStatus("Transcribing voice...");
+          try {
+            const formData = new FormData();
+            formData.append("audio", audioBlob, "recording.webm");
+
+            const res = await fetch("/api/audio/transcribe", {
+              method: "POST",
+              body: formData,
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const voiceText = data.text || data.transcript || "";
+              if (voiceText) {
+                setInput((prev) => (prev ? `${prev} ${voiceText}` : voiceText));
+              }
+            }
+          } catch (err) {
+            console.warn("Transcription error:", err);
+          } finally {
+            setRecordingStatus("");
+            setIsRecording(false);
+          }
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        setRecordingStatus("Listening...");
+      }
+    } catch (err) {
+      console.warn("Microphone access error:", err);
+      setIsRecording(false);
+      setRecordingStatus("");
     }
   };
 
@@ -391,6 +524,7 @@ export function Composer({
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={placeholderText}
             rows={1}
             className="flex-1 bg-transparent text-inputText placeholder-inputPlaceholder text-base resize-none focus:outline-none max-h-48 py-1.5 leading-relaxed"

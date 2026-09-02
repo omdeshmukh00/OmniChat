@@ -75,6 +75,9 @@ export class AutoRouter {
 
     // 5. Automatic Current Information / Web Search Signals
     const webSearchPatterns = [
+      /who\s+is\s+(the\s+|our\s+)?(chief\s+minister|prime\s+minister|president|governor|ceo|head|leader|minister)/i,
+      /who\s+is\s+current/i,
+      /current\s+(chief\s+minister|prime\s+minister|president|governor|ceo|leader|stock|price|news|weather)/i,
       /current\s+stock\s+price/i,
       /stock\s+price\s+of/i,
       /latest\s+news/i,
@@ -82,6 +85,9 @@ export class AutoRouter {
       /who\s+won\s+yesterday/i,
       /latest\s+version\s+of/i,
       /real-time\s+data/i,
+      /who\s+is\s+the\s+cm\s+of/i,
+      /who\s+is\s+cm\s+of/i,
+      /chief\s+minister\s+of/i,
     ];
     if (webSearchPatterns.some((p) => p.test(lower))) {
       return "WEB_SEARCH";
