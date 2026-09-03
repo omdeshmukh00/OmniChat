@@ -2,9 +2,31 @@
 
 import React, { useState } from "react";
 import { Copy, Check, ExternalLink } from "lucide-react";
+import katex from "katex";
 
 interface MarkdownRendererProps {
   content: string;
+}
+
+function MathBlock({ math, displayMode }: { math: string; displayMode: boolean }) {
+  try {
+    const html = katex.renderToString(math.trim(), {
+      displayMode,
+      throwOnError: false,
+    });
+    return (
+      <span
+        dangerouslySetInnerHTML={{ __html: html }}
+        className={
+          displayMode
+            ? "block my-3 text-center overflow-x-auto py-1 text-textPrimary"
+            : "inline-block px-0.5 align-middle text-textPrimary"
+        }
+      />
+    );
+  } catch (error) {
+    return <code className="font-mono text-xs text-emerald-400">{math}</code>;
+  }
 }
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
@@ -61,7 +83,7 @@ function TableBlock({ rows }: { rows: string[] }) {
           <tr>
             {header.map((col, idx) => (
               <th key={idx} className="px-3 py-2 border-r border-borderSubtle last:border-r-0">
-                {col}
+                {parseInlineFormatting(col)}
               </th>
             ))}
           </tr>
@@ -71,7 +93,7 @@ function TableBlock({ rows }: { rows: string[] }) {
             <tr key={rIdx} className="hover:bg-surfaceHover">
               {row.map((cell, cIdx) => (
                 <td key={cIdx} className="px-3 py-2 border-r border-borderSubtle last:border-r-0">
-                  {cell}
+                  {parseInlineFormatting(cell)}
                 </td>
               ))}
             </tr>
@@ -85,7 +107,7 @@ function TableBlock({ rows }: { rows: string[] }) {
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   if (!content) return null;
 
-  // Split content into code blocks vs standard text
+  // 1. Split content into code blocks vs text
   const parts: React.ReactNode[] = [];
   const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
 
@@ -95,7 +117,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   while ((match = codeBlockRegex.exec(content)) !== null) {
     const textBefore = content.substring(lastIndex, match.index);
     if (textBefore) {
-      parts.push(renderFormattedText(textBefore, `text-${lastIndex}`));
+      parts.push(renderNonCodeSection(textBefore, `text-${lastIndex}`));
     }
     const lang = match[1];
     const code = match[2];
@@ -105,10 +127,33 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
 
   const remainingText = content.substring(lastIndex);
   if (remainingText) {
-    parts.push(renderFormattedText(remainingText, `text-${lastIndex}`));
+    parts.push(renderNonCodeSection(remainingText, `text-${lastIndex}`));
   }
 
   return <div className="space-y-2.5 text-[15px] leading-relaxed break-words">{parts}</div>;
+}
+
+function renderNonCodeSection(text: string, keyPrefix: string): React.ReactNode {
+  // Extract display block math ($$...$$ or \[...\]) before splitting lines
+  const elements: React.ReactNode[] = [];
+  const displayMathRegex = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\])/g;
+
+  const segments = text.split(displayMathRegex);
+
+  segments.forEach((seg, idx) => {
+    if (!seg) return;
+
+    if ((seg.startsWith("$$") && seg.endsWith("$$")) || (seg.startsWith("\\[") && seg.endsWith("\\]"))) {
+      const mathContent = seg.startsWith("$$") ? seg.slice(2, -2) : seg.slice(2, -2);
+      elements.push(
+        <MathBlock key={`${keyPrefix}-displaymath-${idx}`} math={mathContent} displayMode={true} />
+      );
+    } else {
+      elements.push(renderFormattedText(seg, `${keyPrefix}-seg-${idx}`));
+    }
+  });
+
+  return <React.Fragment key={keyPrefix}>{elements}</React.Fragment>;
 }
 
 function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
@@ -141,6 +186,15 @@ function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
         <h2 key={`${keyPrefix}-h2-${idx}`} className="text-lg font-semibold text-textPrimary mt-4 mb-1">
           {parseInlineFormatting(line.trim().substring(3))}
         </h2>
+      );
+      return;
+    }
+
+    if (line.trim().startsWith("# ")) {
+      elements.push(
+        <h1 key={`${keyPrefix}-h1-${idx}`} className="text-xl font-bold text-textPrimary mt-4 mb-1">
+          {parseInlineFormatting(line.trim().substring(2))}
+        </h1>
       );
       return;
     }
@@ -203,20 +257,47 @@ function renderFormattedText(text: string, keyPrefix: string): React.ReactNode {
   return <React.Fragment key={keyPrefix}>{elements}</React.Fragment>;
 }
 
+function formatUrlWithUtmSource(urlStr: string): string {
+  try {
+    if (!urlStr || !urlStr.startsWith("http")) return urlStr;
+    const urlObj = new URL(urlStr);
+
+    let host = "localhost:3000";
+    if (typeof window !== "undefined" && window.location && window.location.host) {
+      host = window.location.host;
+    }
+
+    urlObj.searchParams.set("utm_source", host);
+    return urlObj.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
 function parseInlineFormatting(str: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
-  // Tokenize Markdown links [text](url), raw URLs (https://...), inline code `code`, bold **text**, and italic *text*
-  const inlineRegex = /(\[[^\]]+\]\([\s\S]+?\)|https?:\/\/[^\s<)]+|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  // Tokenize Math (\(...$\), $...$), Links [text](url), raw URLs, inline code `code`, bold **text**, and italic *text*
+  const inlineRegex = /(\\\(.*?\\\)|(?:\$)[^\$\n]+?\$|\[[^\]]+\]\([\s\S]+?\)|https?:\/\/[^\s<)]+|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
   const tokens = str.split(inlineRegex);
 
   tokens.forEach((token, idx) => {
     if (!token) return;
 
-    // 1. Markdown Links: [Link Title](https://example.com)
+    // 1. Inline Math: \( math \) or $ math $
+    if ((token.startsWith("\\(") && token.endsWith("\\)")) || (token.startsWith("$") && token.endsWith("$"))) {
+      const math = token.startsWith("\\(") ? token.slice(2, -2) : token.slice(1, -1);
+      if (math.trim()) {
+        parts.push(<MathBlock key={idx} math={math} displayMode={false} />);
+        return;
+      }
+    }
+
+    // 2. Markdown Links: [Link Title](https://example.com)
     const markdownLinkMatch = token.match(/^\[([\s\S]+?)\]\(([\s\S]+?)\)$/);
     if (markdownLinkMatch) {
       const linkText = markdownLinkMatch[1].trim();
-      const linkUrl = markdownLinkMatch[2].trim().replace(/\s+/g, "");
+      const rawUrl = markdownLinkMatch[2].trim().replace(/\s+/g, "");
+      const linkUrl = formatUrlWithUtmSource(rawUrl);
       parts.push(
         <a
           key={idx}
@@ -233,9 +314,10 @@ function parseInlineFormatting(str: string): React.ReactNode[] {
       return;
     }
 
-    // 2. Raw Plain-Text URLs: https://omni-chat-rosy.vercel.app/...
+    // 3. Raw Plain-Text URLs: https://omni-chat-rosy.vercel.app/...
     if (/^https?:\/\/[^\s<)]+$/.test(token)) {
-      const cleanUrl = token.trim();
+      const rawUrl = token.trim();
+      const cleanUrl = formatUrlWithUtmSource(rawUrl);
       parts.push(
         <a
           key={idx}
@@ -245,14 +327,14 @@ function parseInlineFormatting(str: string): React.ReactNode[] {
           className="text-emerald-500 dark:text-emerald-400 hover:underline font-medium hover:opacity-90 inline-flex items-center gap-1 cursor-pointer break-all"
           onClick={(e) => e.stopPropagation()}
         >
-          <span>{cleanUrl}</span>
+          <span>{rawUrl}</span>
           <ExternalLink className="w-3 h-3 opacity-70 inline shrink-0" />
         </a>
       );
       return;
     }
 
-    // 3. Inline Code: `const x = 1;`
+    // 4. Inline Code: `const x = 1;`
     if (token.startsWith("`") && token.endsWith("`")) {
       parts.push(
         <code
@@ -265,7 +347,7 @@ function parseInlineFormatting(str: string): React.ReactNode[] {
       return;
     }
 
-    // 4. Bold Text: **strong**
+    // 5. Bold Text: **strong**
     if (token.startsWith("**") && token.endsWith("**")) {
       parts.push(
         <strong key={idx} className="font-semibold text-textPrimary">
@@ -275,7 +357,7 @@ function parseInlineFormatting(str: string): React.ReactNode[] {
       return;
     }
 
-    // 5. Italic Text: *emphasis*
+    // 6. Italic Text: *emphasis*
     if (token.startsWith("*") && token.endsWith("*")) {
       parts.push(
         <em key={idx} className="italic text-textSecondary">
@@ -285,9 +367,10 @@ function parseInlineFormatting(str: string): React.ReactNode[] {
       return;
     }
 
-    // 6. Default Text
+    // 7. Default Text
     parts.push(<span key={idx}>{token}</span>);
   });
 
   return parts;
 }
+

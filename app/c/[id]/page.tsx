@@ -1,4 +1,4 @@
-import Home from "@/app/page";
+import { ChatApp } from "@/components/chat/ChatApp";
 
 export default async function ConversationPage({
   params,
@@ -6,5 +6,5 @@ export default async function ConversationPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <Home initialConversationId={id} />;
+  return <ChatApp initialConversationId={id} />;
 }

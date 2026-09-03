@@ -32,6 +32,7 @@ export const createChatSchema = z.object({
   mode: chatModeSchema.default("chat"),
   provider: z.string().optional(),
   model: z.string().optional(),
+  systemPrompt: z.string().optional(),
   messages: z.array(messageInputSchema).min(1),
   attachmentIds: z.array(z.string()).optional(),
 });

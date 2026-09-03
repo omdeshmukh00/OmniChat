@@ -8,7 +8,10 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    await connectToDatabase();
+    const db = await connectToDatabase();
+    if (!db) {
+      return NextResponse.json({ conversations: [] });
+    }
     const conversations = await Conversation.find()
       .sort({ updatedAt: -1, createdAt: -1 })
       .limit(50)

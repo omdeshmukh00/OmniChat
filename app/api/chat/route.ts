@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
       mode: parsed.mode as any,
       provider: parsed.provider,
       model: parsed.model,
+      systemPrompt: parsed.systemPrompt,
       messages: normalizedMessages,
       attachments,
     };

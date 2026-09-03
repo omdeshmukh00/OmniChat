@@ -79,6 +79,17 @@ export class GeminiProvider extends AIProvider {
   private formatContents(request: AIRequest) {
     const contents: { role: string; parts: any[] }[] = [];
 
+    if (request.systemPrompt) {
+      contents.push({
+        role: "user",
+        parts: [{ text: `[System Context & Background Instructions]\n${request.systemPrompt}` }],
+      });
+      contents.push({
+        role: "model",
+        parts: [{ text: "Understood. I will synthesize my response based on this context." }],
+      });
+    }
+
     for (let i = 0; i < request.messages.length; i++) {
       const msg = request.messages[i];
       const isLastUserMsg = i === request.messages.length - 1 && msg.role === "user";

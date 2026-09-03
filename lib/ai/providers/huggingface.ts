@@ -50,6 +50,10 @@ export class HuggingFaceProvider extends AIProvider {
   private formatMessages(request: AIRequest) {
     const messages: { role: "user" | "assistant" | "system"; content: string }[] = [];
 
+    if (request.systemPrompt) {
+      messages.push({ role: "system", content: request.systemPrompt });
+    }
+
     for (let i = 0; i < request.messages.length; i++) {
       const msg = request.messages[i];
       const isLastUserMsg = i === request.messages.length - 1 && msg.role === "user";

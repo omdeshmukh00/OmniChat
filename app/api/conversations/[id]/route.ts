@@ -23,7 +23,10 @@ export async function GET(
       });
     }
 
-    await connectToDatabase();
+    const db = await connectToDatabase();
+    if (!db) {
+      return NextResponse.json({ conversation: null, messages: [] });
+    }
 
     // Fetch Conversation & Messages in parallel
     const [conversation, messages] = await Promise.all([

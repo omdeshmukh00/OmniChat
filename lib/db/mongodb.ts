@@ -4,7 +4,7 @@ import { logger } from "@/lib/security/logger";
 
 interface MongooseCache {
   conn: typeof mongoose | null;
-  promise: Promise<typeof mongoose> | null;
+  promise: Promise<typeof mongoose | null> | null;
 }
 
 declare global {
@@ -51,14 +51,21 @@ export async function connectToDatabase(): Promise<typeof mongoose | null> {
       .catch((err) => {
         logger.error("MongoDB connection failed gracefully:", err.message);
         cached.promise = null;
-        return null as unknown as typeof mongoose;
+        return null;
       });
   }
 
   try {
-    cached.conn = await cached.promise;
+    const res = await cached.promise;
+    if (!res || mongoose.connection.readyState !== 1) {
+      cached.promise = null;
+      cached.conn = null;
+      return null;
+    }
+    cached.conn = res;
   } catch (err) {
     cached.promise = null;
+    cached.conn = null;
     logger.error("Error awaiting MongoDB connection promise:", err);
     return null;
   }
