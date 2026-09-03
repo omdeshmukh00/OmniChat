@@ -12,8 +12,8 @@ export class ProviderRegistry {
   private providers: Map<string, AIProvider> = new Map();
 
   private constructor() {
-    this.registerProvider(new OpenAIProvider());
     this.registerProvider(new GeminiProvider());
+    this.registerProvider(new OpenAIProvider());
     this.registerProvider(new AnthropicProvider());
     this.registerProvider(new XAIProvider());
     this.registerProvider(new HuggingFaceProvider());

@@ -68,26 +68,26 @@ export async function POST(req: NextRequest) {
 
     const initialSelection = AutoRouter.selectProviderAndModel(aiRequest);
 
-    // Build Candidate Cascade: Primary Selection -> Gemini -> OpenAI -> HuggingFace
+    // Build Candidate Cascade: Primary Selection -> Gemini 3.5 Flash -> HuggingFace -> OpenAI
     const candidateAdapters: { provider: AIProvider; model: string }[] = [];
     candidateAdapters.push(initialSelection);
 
     if (initialSelection.provider.id !== "gemini") {
       candidateAdapters.push({
         provider: providerRegistry.getProvider("gemini"),
-        model: "gemini-3.6-flash",
-      });
-    }
-    if (initialSelection.provider.id !== "openai") {
-      candidateAdapters.push({
-        provider: providerRegistry.getProvider("openai"),
-        model: "gpt-4o",
+        model: "gemini-3.5-flash",
       });
     }
     if (initialSelection.provider.id !== "huggingface") {
       candidateAdapters.push({
         provider: providerRegistry.getProvider("huggingface"),
         model: "Qwen/Qwen2.5-Coder-32B-Instruct",
+      });
+    }
+    if (initialSelection.provider.id !== "openai") {
+      candidateAdapters.push({
+        provider: providerRegistry.getProvider("openai"),
+        model: "gpt-4o",
       });
     }
 

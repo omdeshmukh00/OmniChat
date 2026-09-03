@@ -15,19 +15,19 @@ const DEFAULT_MODELS: ModelOption[] = [
     id: "auto",
     name: "Auto (Smart Router)",
     provider: "auto",
-    description: "Automatically routes prompts to active high-performance model (Gemini 3.6 Flash).",
-  },
-  {
-    id: "gemini-3.6-flash",
-    name: "Gemini 3.6 Flash",
-    provider: "gemini",
-    description: "Google's active multimodal model with high speed and zero rate limits.",
+    description: "Automatically routes prompts to fastest active high-performance model (Gemini 3.5 Flash).",
   },
   {
     id: "gemini-3.5-flash",
     name: "Gemini 3.5 Flash",
     provider: "gemini",
-    description: "Google's fast multimodal model for general conversational tasks.",
+    description: "Google's ultra-fast, high-reliability multimodal vision model (Instant response).",
+  },
+  {
+    id: "gemini-3.6-flash",
+    name: "Gemini 3.6 Flash",
+    provider: "gemini",
+    description: "Google's advanced multimodal model for complex reasoning tasks.",
   },
   {
     id: "gpt-4o",

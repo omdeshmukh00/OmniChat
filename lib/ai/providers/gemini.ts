@@ -127,9 +127,9 @@ export class GeminiProvider extends AIProvider {
     }
 
     const env = getServerEnv();
-    const primaryModel = request.model || "gemini-3.6-flash";
+    const primaryModel = request.model && request.model !== "auto" ? request.model : "gemini-3.5-flash";
     const candidateModels = Array.from(
-      new Set([primaryModel, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"])
+      new Set([primaryModel, "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"])
     );
     const contents = this.formatContents(request);
     const startTime = Date.now();
@@ -178,7 +178,7 @@ export class GeminiProvider extends AIProvider {
         const isLast = i === words.length - 1;
         yield {
           provider: this.id,
-          model: request.model || "gemini-3.6-flash",
+          model: request.model || "gemini-3.5-flash",
           textDelta: words[i] + (isLast ? "" : " "),
           isComplete: isLast,
           finishReason: isLast ? "stop" : undefined,
@@ -188,9 +188,9 @@ export class GeminiProvider extends AIProvider {
     }
 
     const env = getServerEnv();
-    const primaryModel = request.model || "gemini-3.6-flash";
+    const primaryModel = request.model && request.model !== "auto" ? request.model : "gemini-3.5-flash";
     const candidateModels = Array.from(
-      new Set([primaryModel, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"])
+      new Set([primaryModel, "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"])
     );
     const contents = this.formatContents(request);
 

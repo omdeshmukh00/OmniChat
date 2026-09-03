@@ -131,7 +131,7 @@ export class AutoRouter {
       const defaultModel =
         request.model ||
         (request.provider === "gemini"
-          ? "gemini-3.6-flash"
+          ? "gemini-3.5-flash"
           : request.provider === "openai"
           ? "gpt-4o"
           : request.provider === "anthropic"
@@ -142,9 +142,9 @@ export class AutoRouter {
 
     // 3. Capability-based Auto-Routing
     const configured = providerRegistry.getConfiguredProviders();
-    const openaiProvider = configured.find((p) => p.id === "openai");
     const geminiProvider = configured.find((p) => p.id === "gemini");
-    const activeProvider = openaiProvider || geminiProvider || configured[0] || providerRegistry.getProvider("openai");
+    const openaiProvider = configured.find((p) => p.id === "openai");
+    const activeProvider = geminiProvider || openaiProvider || configured[0] || providerRegistry.getProvider("gemini");
 
     if (request.mode === "image" || request.mode?.startsWith("image_")) {
       const imgProvider = configured.find((p) => p.capabilities.imageGeneration) || providerRegistry.getProvider("openai");
@@ -154,16 +154,16 @@ export class AutoRouter {
     if (request.attachments && request.attachments.length > 0) {
       const hasImage = request.attachments.some((a) => a.mimeType && a.mimeType.startsWith("image/"));
       if (hasImage) {
-        return { provider: activeProvider, model: activeProvider.id === "openai" ? "gpt-4o" : "gemini-3.6-flash" };
+        return { provider: activeProvider, model: activeProvider.id === "openai" ? "gpt-4o" : "gemini-3.5-flash" };
       }
     }
 
-    // Default Auto Model (OpenAI GPT-4o / Gemini 3.6 Flash)
+    // Default Auto Model (OpenAI GPT-4o / Gemini 3.5 Flash)
     const defaultModel =
       activeProvider.id === "openai"
         ? "gpt-4o"
         : activeProvider.id === "gemini"
-        ? "gemini-3.6-flash"
+        ? "gemini-3.5-flash"
         : "gpt-4o";
 
     return { provider: activeProvider, model: defaultModel };

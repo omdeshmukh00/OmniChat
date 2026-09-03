@@ -12,6 +12,7 @@ import {
   Square,
   RectangleHorizontal,
   RectangleVertical,
+  Loader2,
 } from "lucide-react";
 import { ComposerPlusMenu } from "./ComposerPlusMenu";
 
@@ -21,6 +22,7 @@ export interface AttachedFile {
   type: string;
   size: number;
   previewUrl?: string;
+  uploading?: boolean;
 }
 
 interface ComposerProps {
@@ -124,12 +126,14 @@ export function Composer({
             ? file.name
             : `pasted-image-${Date.now()}.${ext}`;
 
+        const tempId = `temp-${Math.random().toString(36).substring(2, 9)}`;
         const localFile: AttachedFile = {
-          id: Math.random().toString(36).substring(2, 9),
+          id: tempId,
           name: fileName,
           type: file.type || "image/png",
           size: file.size,
           previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+          uploading: true,
         };
 
         setAttachedFiles((prev) => [...prev, localFile]);
@@ -147,12 +151,15 @@ export function Composer({
             const data = await res.json();
             setAttachedFiles((prev) =>
               prev.map((item) =>
-                item.id === localFile.id ? { ...item, id: data.file.id } : item
+                item.id === tempId ? { ...item, id: data.file.id, uploading: false } : item
               )
             );
+          } else {
+            setAttachedFiles((prev) => prev.filter((item) => item.id !== tempId));
           }
         } catch (err) {
           console.warn("Pasted file upload notice:", err);
+          setAttachedFiles((prev) => prev.filter((item) => item.id !== tempId));
         }
       }
     }
@@ -161,6 +168,10 @@ export function Composer({
   const handleSubmit = () => {
     if (isStreaming) {
       if (onStopStream) onStopStream();
+      return;
+    }
+    const hasUploadingFiles = attachedFiles.some((f) => f.uploading || f.id.startsWith("temp-"));
+    if (hasUploadingFiles) {
       return;
     }
     if (!input.trim() && attachedFiles.length === 0) return;
@@ -192,12 +203,14 @@ export function Composer({
     if (!files) return;
 
     for (const f of Array.from(files)) {
+      const tempId = `temp-${Math.random().toString(36).substring(2, 9)}`;
       const localFile: AttachedFile = {
-        id: Math.random().toString(36).substring(2, 9),
+        id: tempId,
         name: f.name,
         type: f.type,
         size: f.size,
         previewUrl: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+        uploading: true,
       };
 
       setAttachedFiles((prev) => [...prev, localFile]);
@@ -215,12 +228,15 @@ export function Composer({
           const data = await res.json();
           setAttachedFiles((prev) =>
             prev.map((item) =>
-              item.id === localFile.id ? { ...item, id: data.file.id } : item
+              item.id === tempId ? { ...item, id: data.file.id, uploading: false } : item
             )
           );
+        } else {
+          setAttachedFiles((prev) => prev.filter((item) => item.id !== tempId));
         }
       } catch (err) {
         console.warn("File upload notice:", err);
+        setAttachedFiles((prev) => prev.filter((item) => item.id !== tempId));
       }
     }
   };
@@ -364,7 +380,8 @@ export function Composer({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const canSubmit = Boolean(input.trim() || attachedFiles.length > 0);
+  const isUploadingAny = attachedFiles.some((f) => f.uploading || f.id.startsWith("temp-"));
+  const canSubmit = Boolean((input.trim() || attachedFiles.length > 0) && !isUploadingAny);
 
   const placeholderText =
     mode === "image"
@@ -456,36 +473,43 @@ export function Composer({
         {/* Attached File Cards */}
         {attachedFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2 px-1">
-            {attachedFiles.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center gap-2 bg-surface border border-borderSubtle rounded-xl px-2.5 py-1 text-xs text-textPrimary shadow-sm"
-              >
-                {file.previewUrl ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={file.previewUrl}
-                    alt={file.name}
-                    className="w-5 h-5 rounded object-cover"
-                  />
-                ) : (
-                  <FileText className="w-4 h-4 text-emerald-500" />
-                )}
-                <span className="truncate max-w-[120px] font-medium">
-                  {file.name}
-                </span>
-                <span className="text-[10px] text-textMuted">
-                  ({formatFileSize(file.size)})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveFile(file.id)}
-                  className="p-0.5 rounded hover:bg-surfaceHover text-textMuted hover:text-textPrimary transition-colors cursor-pointer"
+            {attachedFiles.map((file) => {
+              const isUploading = file.uploading || file.id.startsWith("temp-");
+              return (
+                <div
+                  key={file.id}
+                  className={`flex items-center gap-2 bg-surface border rounded-xl px-2.5 py-1 text-xs text-textPrimary shadow-sm transition-all ${
+                    isUploading ? "border-emerald-500/50 opacity-85" : "border-borderSubtle"
+                  }`}
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
+                  {isUploading ? (
+                    <Loader2 className="w-4 h-4 text-emerald-400 animate-spin shrink-0" />
+                  ) : file.previewUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={file.previewUrl}
+                      alt={file.name}
+                      className="w-5 h-5 rounded object-cover"
+                    />
+                  ) : (
+                    <FileText className="w-4 h-4 text-emerald-500" />
+                  )}
+                  <span className="truncate max-w-[120px] font-medium">
+                    {file.name}
+                  </span>
+                  <span className="text-[10px] text-textMuted">
+                    {isUploading ? "(Uploading...)" : `(${formatFileSize(file.size)})`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(file.id)}
+                    className="p-0.5 rounded hover:bg-surfaceHover text-textMuted hover:text-textPrimary transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
