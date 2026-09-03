@@ -81,7 +81,6 @@ export async function POST(req: NextRequest) {
         mimeType: asset.mimeType,
         sizeBytes: asset.sizeBytes,
         extractedText: asset.extractedText,
-        dataBase64,
       },
     });
   } catch (err) {

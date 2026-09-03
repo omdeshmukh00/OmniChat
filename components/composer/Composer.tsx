@@ -14,6 +14,7 @@ import {
   RectangleVertical,
   Loader2,
 } from "lucide-react";
+import { compressImageFile } from "@/lib/image/compress";
 import { ComposerPlusMenu } from "./ComposerPlusMenu";
 
 export interface AttachedFile {
@@ -120,19 +121,15 @@ export function Composer({
         const file = item.getAsFile();
         if (!file) continue;
 
-        const ext = file.type.split("/")[1] || "png";
-        const fileName =
-          file.name && file.name !== "image.png"
-            ? file.name
-            : `pasted-image-${Date.now()}.${ext}`;
-
         const tempId = `temp-${Math.random().toString(36).substring(2, 9)}`;
+        const processedFile = await compressImageFile(file);
+
         const localFile: AttachedFile = {
           id: tempId,
-          name: fileName,
-          type: file.type || "image/png",
-          size: file.size,
-          previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+          name: processedFile.name,
+          type: processedFile.type || "image/jpeg",
+          size: processedFile.size,
+          previewUrl: processedFile.type.startsWith("image/") ? URL.createObjectURL(processedFile) : undefined,
           uploading: true,
         };
 
@@ -140,7 +137,7 @@ export function Composer({
 
         try {
           const formData = new FormData();
-          formData.append("file", file, fileName);
+          formData.append("file", processedFile, processedFile.name);
 
           const res = await fetch("/api/files/upload", {
             method: "POST",
@@ -204,12 +201,14 @@ export function Composer({
 
     for (const f of Array.from(files)) {
       const tempId = `temp-${Math.random().toString(36).substring(2, 9)}`;
+      const processedFile = await compressImageFile(f);
+
       const localFile: AttachedFile = {
         id: tempId,
-        name: f.name,
-        type: f.type,
-        size: f.size,
-        previewUrl: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+        name: processedFile.name,
+        type: processedFile.type,
+        size: processedFile.size,
+        previewUrl: processedFile.type.startsWith("image/") ? URL.createObjectURL(processedFile) : undefined,
         uploading: true,
       };
 
@@ -217,7 +216,7 @@ export function Composer({
 
       try {
         const formData = new FormData();
-        formData.append("file", f);
+        formData.append("file", processedFile);
 
         const res = await fetch("/api/files/upload", {
           method: "POST",
