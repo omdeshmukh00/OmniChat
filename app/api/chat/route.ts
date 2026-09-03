@@ -16,8 +16,11 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    const t0 = Date.now();
     const body = await req.json();
+    const tBody = Date.now();
     const parsed = createChatSchema.parse(body);
+    const tValidation = Date.now();
 
     const firstUserMsg = parsed.messages[parsed.messages.length - 1];
     const initialText = firstUserMsg?.content.find((c) => c.text)?.text || "New Chat";
@@ -33,6 +36,7 @@ export async function POST(req: NextRequest) {
 
     // Connect DB & fetch attached file documents synchronously before provider stream starts
     const attachments: NormalizedAttachment[] = [];
+    const tAttachmentStart = Date.now();
     if (parsed.attachmentIds && parsed.attachmentIds.length > 0) {
       await connectToDatabase();
       const validIds = parsed.attachmentIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
@@ -51,6 +55,7 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+    const tAttachmentEnd = Date.now();
 
     // Prepare AI Request & Select Provider
     const normalizedMessages = parsed.messages.map((m) => ({
@@ -67,7 +72,9 @@ export async function POST(req: NextRequest) {
       attachments,
     };
 
+    const tRouteStart = Date.now();
     const initialSelection = AutoRouter.selectProviderAndModel(aiRequest);
+    const tRouteEnd = Date.now();
 
     // Build Candidate Cascade: Primary Selection -> Gemini 3.5 Flash -> HuggingFace -> OpenAI
     const candidateAdapters: { provider: AIProvider; model: string }[] = [];
@@ -98,6 +105,7 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         let fullText = "";
         const startTime = Date.now();
+        let ttft: number | null = null;
         let activeProviderId = initialSelection.provider.id;
         let activeModel = initialSelection.model;
 
@@ -116,6 +124,7 @@ export async function POST(req: NextRequest) {
           );
 
           // Asynchronously persist conversation and user/assistant messages in background
+          const tDbBgStart = Date.now();
           const dbPromise = (async () => {
             try {
               await connectToDatabase();
@@ -163,6 +172,7 @@ export async function POST(req: NextRequest) {
           // Stream with Self-Healing Multi-Provider Cascade Fallback
           let streamSuccess = false;
           let lastErrorMessage = "";
+          const tProviderStreamStart = Date.now();
 
           for (const candidate of candidateAdapters) {
             try {
@@ -172,6 +182,9 @@ export async function POST(req: NextRequest) {
                 attachments,
               })) {
                 if (chunk.textDelta) {
+                  if (ttft === null) {
+                    ttft = Date.now() - t0;
+                  }
                   fullText += chunk.textDelta;
                   streamSuccess = true;
                   activeProviderId = candidate.provider.id;
@@ -192,6 +205,7 @@ export async function POST(req: NextRequest) {
               console.warn(`Provider fallback notice (${candidate.provider.id}): ${lastErrorMessage}`);
             }
           }
+          const tProviderStreamEnd = Date.now();
 
           // Structured Fallback if all external API keys fail or exceed quota
           if (!streamSuccess || !fullText.trim()) {
@@ -204,6 +218,8 @@ export async function POST(req: NextRequest) {
               fullText = `Hello! I am **OmniChat**, your multimodal AI assistant.\n\nI processed your request using provider orchestration (\`${activeProviderId}\` / \`${activeModel}\`). All chat functions, document vision analysis, live web search, and image generation are active.`;
             }
 
+            if (ttft === null) ttft = Date.now() - t0;
+
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -215,7 +231,9 @@ export async function POST(req: NextRequest) {
           }
 
           // Ensure DB records are created before finalizing
+          const tDbAwaitStart = Date.now();
           await dbPromise;
+          const tDbAwaitEnd = Date.now();
 
           // Mark Assistant Message Complete in MongoDB
           await Message.findByIdAndUpdate(assistantMsgObjectId, {
@@ -234,6 +252,9 @@ export async function POST(req: NextRequest) {
             latencyMs: Date.now() - startTime,
             success: true,
           }).catch(() => {});
+
+          const tRequestEnd = Date.now();
+          console.log(`[CHAT PERF] request_received=0ms body_parse=${tBody - t0}ms validation=${tValidation - tBody}ms attachment_proc=${tAttachmentEnd - tAttachmentStart}ms routing=${tRouteEnd - tRouteStart}ms TTFT=${ttft}ms provider_stream=${tProviderStreamEnd - tProviderStreamStart}ms db_await=${tDbAwaitEnd - tDbAwaitStart}ms total=${tRequestEnd - t0}ms provider=${activeProviderId} model=${activeModel}`);
 
           controller.enqueue(
             encoder.encode(

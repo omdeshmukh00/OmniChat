@@ -143,7 +143,7 @@ export class AutoRouter {
       const defaultModel =
         request.model ||
         (request.provider === "gemini"
-          ? "gemini-3.5-flash"
+          ? "gemini-2.0-flash"
           : request.provider === "openai"
           ? "gpt-4o"
           : request.provider === "anthropic"
@@ -166,16 +166,16 @@ export class AutoRouter {
     if (request.attachments && request.attachments.length > 0) {
       const hasImage = request.attachments.some((a) => a.mimeType && a.mimeType.startsWith("image/"));
       if (hasImage) {
-        return { provider: activeProvider, model: activeProvider.id === "openai" ? "gpt-4o" : "gemini-3.5-flash" };
+        return { provider: activeProvider, model: activeProvider.id === "openai" ? "gpt-4o" : "gemini-2.0-flash" };
       }
     }
 
-    // Default Auto Model (OpenAI GPT-4o / Gemini 3.5 Flash)
+    // Default Auto Model (Gemini 2.0 Flash / OpenAI GPT-4o)
     const defaultModel =
       activeProvider.id === "openai"
         ? "gpt-4o"
         : activeProvider.id === "gemini"
-        ? "gemini-3.5-flash"
+        ? "gemini-2.0-flash"
         : "gpt-4o";
 
     return { provider: activeProvider, model: defaultModel };
