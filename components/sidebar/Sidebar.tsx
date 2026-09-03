@@ -18,8 +18,9 @@ import {
 export interface ConversationSummary {
   id: string;
   title: string;
-  dateGroup: "Today" | "Yesterday" | "Previous 7 Days" | "Older";
+  dateGroup?: "Today" | "Yesterday" | "Previous 7 Days" | "Older";
   updatedAt: string;
+  matchSnippet?: string;
 }
 
 interface SidebarProps {
@@ -49,10 +50,35 @@ export function Sidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<ConversationSummary[] | null>(null);
 
   const activeConversations = externalConversations && externalConversations.length > 0
     ? externalConversations
     : internalConversations;
+
+  // Live full-text search across message content and conversation titles
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/conversations?q=${encodeURIComponent(searchQuery.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.conversations) {
+            setSearchResults(data.conversations);
+          }
+        }
+      } catch (err) {
+        console.warn("Search fetch error:", err);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Close sidebar on escape key on small screens
   useEffect(() => {
@@ -73,9 +99,10 @@ export function Sidebar({
     setInternalConversations((prev) => prev.filter((c) => c.id !== id));
   };
 
-  const filteredConversations = activeConversations.filter((c) =>
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const isSearchActive = Boolean(searchQuery.trim());
+  const displayedConversations = isSearchActive && searchResults !== null
+    ? searchResults
+    : activeConversations;
 
   return (
     <>
@@ -149,6 +176,7 @@ export function Sidebar({
                   onClick={() => {
                     setIsSearching(false);
                     setSearchQuery("");
+                    setSearchResults(null);
                   }}
                   className="absolute right-2.5 top-2.5 text-textMuted hover:text-textPrimary cursor-pointer"
                 >
@@ -172,15 +200,15 @@ export function Sidebar({
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
             <div>
               <div className="px-2 mb-2 text-xs font-semibold text-textMuted uppercase tracking-wider">
-                Recent chats
+                {isSearchActive ? "Search Results" : "Recent chats"}
               </div>
-              {filteredConversations.length === 0 ? (
+              {displayedConversations.length === 0 ? (
                 <div className="px-2 py-3 text-sm text-textMuted italic">
-                  No recent chats
+                  {isSearchActive ? "No matching messages found" : "No recent chats"}
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {filteredConversations.map((chat) => {
+                  {displayedConversations.map((chat) => {
                     const isActive = chat.id === activeConversationId;
                     return (
                       <div
@@ -197,9 +225,16 @@ export function Sidebar({
                             : "text-textSecondary hover:text-textPrimary hover:bg-surface"
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 truncate min-w-0 flex-1">
-                          <MessageSquare className="w-4 h-4 text-textMuted shrink-0 group-hover:text-emerald-500 transition-colors" />
-                          <span className="truncate">{chat.title}</span>
+                        <div className="flex items-start gap-2.5 truncate min-w-0 flex-1">
+                          <MessageSquare className="w-4 h-4 text-textMuted shrink-0 group-hover:text-emerald-500 transition-colors mt-0.5" />
+                          <div className="truncate min-w-0 flex-1">
+                            <div className="truncate">{chat.title}</div>
+                            {chat.matchSnippet && (
+                              <div className="text-[11px] text-emerald-400/90 truncate font-normal opacity-90 mt-0.5">
+                                "{chat.matchSnippet}"
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

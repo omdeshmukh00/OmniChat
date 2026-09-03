@@ -28,7 +28,9 @@ export async function GET(
       return NextResponse.json({ conversation: null, messages: [] });
     }
 
-    // Fetch Conversation & Messages in parallel
+    // Fetch Conversation & Messages in parallel & bump updatedAt
+    Conversation.findByIdAndUpdate(id, { updatedAt: new Date() }).catch(() => {});
+
     const [conversation, messages] = await Promise.all([
       Conversation.findById(id).lean(),
       Message.find({ conversationId: id }).sort({ createdAt: 1 }).lean(),

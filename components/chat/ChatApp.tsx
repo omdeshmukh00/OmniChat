@@ -154,7 +154,7 @@ export function ChatApp({ initialConversationId = "" }: ChatAppProps) {
     });
   };
 
-  const fetchConversations = async () => {
+  const fetchConversations = async (currentActiveId?: string) => {
     try {
       const res = await fetch("/api/conversations");
       if (res.ok) {
@@ -166,6 +166,17 @@ export function ChatApp({ initialConversationId = "" }: ChatAppProps) {
             dateGroup: "Today",
             updatedAt: "Just now",
           }));
+
+          const targetActiveId = currentActiveId || activeConversationId;
+          if (targetActiveId) {
+            const idx = mapped.findIndex((c) => c.id === targetActiveId);
+            if (idx > 0) {
+              const activeConv = mapped[idx];
+              mapped.splice(idx, 1);
+              mapped.unshift(activeConv);
+            }
+          }
+
           setConversations(mapped);
         }
       }
@@ -180,8 +191,20 @@ export function ChatApp({ initialConversationId = "" }: ChatAppProps) {
     }
   };
 
+  const moveConversationToTop = (convId: string) => {
+    if (!convId) return;
+    setConversations((prev) => {
+      const idx = prev.findIndex((c) => c.id === convId);
+      if (idx === -1) return prev;
+      const target = { ...prev[idx], updatedAt: "Just now" };
+      const rest = prev.filter((c) => c.id !== convId);
+      return [target, ...rest];
+    });
+  };
+
   const loadConversationMessages = async (id: string) => {
     setActiveConversationId(id);
+    moveConversationToTop(id);
     navigateTo(`/c/${id}`);
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setSidebarOpen(false);
@@ -278,6 +301,10 @@ export function ChatApp({ initialConversationId = "" }: ChatAppProps) {
       })),
       timestamp: "Just now",
     };
+
+    if (activeConversationId) {
+      moveConversationToTop(activeConversationId);
+    }
 
     setMessages((prev) => [...prev, userMessage]);
     setIsStreaming(true);

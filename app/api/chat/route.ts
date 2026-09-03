@@ -136,6 +136,10 @@ export async function POST(req: NextRequest) {
                   mode: parsed.mode === "auto" ? "chat" : parsed.mode,
                   modelPreference: parsed.model || parsed.provider || "auto",
                 }).catch(() => {});
+              } else {
+                await Conversation.findByIdAndUpdate(convObjectId, {
+                  updatedAt: new Date(),
+                }).catch(() => {});
               }
 
               await Message.create({
