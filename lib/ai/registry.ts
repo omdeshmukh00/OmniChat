@@ -3,6 +3,7 @@ import { OpenAIProvider } from "./providers/openai";
 import { GeminiProvider } from "./providers/gemini";
 import { AnthropicProvider } from "./providers/anthropic";
 import { XAIProvider } from "./providers/xai";
+import { HuggingFaceProvider } from "./providers/huggingface";
 import { AIRequest, ModelDefinition } from "./types";
 import { AppError } from "@/lib/security/errors";
 
@@ -15,6 +16,7 @@ export class ProviderRegistry {
     this.registerProvider(new GeminiProvider());
     this.registerProvider(new AnthropicProvider());
     this.registerProvider(new XAIProvider());
+    this.registerProvider(new HuggingFaceProvider());
   }
 
   public static getInstance(): ProviderRegistry {
@@ -74,8 +76,7 @@ export class ProviderRegistry {
     const configured = this.getConfiguredProviders();
 
     if (configured.length === 0) {
-      // Return default OpenAI provider stub to show clean error message
-      return this.getProvider("openai");
+      return this.getProvider("huggingface");
     }
 
     // Routing rules

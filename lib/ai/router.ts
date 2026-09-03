@@ -75,9 +75,9 @@ export class AutoRouter {
 
     // 5. Automatic Current Information / Web Search Signals
     const webSearchPatterns = [
-      /who\s+is\s+(the\s+|our\s+)?(chief\s+minister|prime\s+minister|president|governor|ceo|head|leader|minister)/i,
+      /who\s+is\s+(the\s+|our\s+)?(chief\s+minister|prime\s+minister|president|governor|ceo|head|leader|minister|collector)/i,
       /who\s+is\s+current/i,
-      /current\s+(chief\s+minister|prime\s+minister|president|governor|ceo|leader|stock|price|news|weather)/i,
+      /current\s+(chief\s+minister|prime\s+minister|president|governor|ceo|leader|collector|stock|price|news|weather)/i,
       /current\s+stock\s+price/i,
       /stock\s+price\s+of/i,
       /latest\s+news/i,
@@ -88,6 +88,7 @@ export class AutoRouter {
       /who\s+is\s+the\s+cm\s+of/i,
       /who\s+is\s+cm\s+of/i,
       /chief\s+minister\s+of/i,
+      /collector\s+of/i,
     ];
     if (webSearchPatterns.some((p) => p.test(lower))) {
       return "WEB_SEARCH";
@@ -141,8 +142,9 @@ export class AutoRouter {
 
     // 3. Capability-based Auto-Routing
     const configured = providerRegistry.getConfiguredProviders();
+    const openaiProvider = configured.find((p) => p.id === "openai");
     const geminiProvider = configured.find((p) => p.id === "gemini");
-    const activeProvider = geminiProvider || configured[0] || providerRegistry.getProvider("gemini");
+    const activeProvider = openaiProvider || geminiProvider || configured[0] || providerRegistry.getProvider("openai");
 
     if (request.mode === "image" || request.mode?.startsWith("image_")) {
       const imgProvider = configured.find((p) => p.capabilities.imageGeneration) || providerRegistry.getProvider("openai");
@@ -152,17 +154,17 @@ export class AutoRouter {
     if (request.attachments && request.attachments.length > 0) {
       const hasImage = request.attachments.some((a) => a.mimeType && a.mimeType.startsWith("image/"));
       if (hasImage) {
-        return { provider: activeProvider, model: activeProvider.id === "gemini" ? "gemini-3.6-flash" : "gpt-4o" };
+        return { provider: activeProvider, model: activeProvider.id === "openai" ? "gpt-4o" : "gemini-3.6-flash" };
       }
     }
 
-    // Default Auto Model (Gemini 3.6 Flash - Ultra-fast)
+    // Default Auto Model (OpenAI GPT-4o / Gemini 3.6 Flash)
     const defaultModel =
-      activeProvider.id === "gemini"
-        ? "gemini-3.6-flash"
-        : activeProvider.id === "openai"
+      activeProvider.id === "openai"
         ? "gpt-4o"
-        : "gemini-3.6-flash";
+        : activeProvider.id === "gemini"
+        ? "gemini-3.6-flash"
+        : "gpt-4o";
 
     return { provider: activeProvider, model: defaultModel };
   }

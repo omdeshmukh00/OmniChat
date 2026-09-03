@@ -47,12 +47,30 @@ export class GeminiProvider extends AIProvider {
         isDefault: true,
       },
       {
-        id: "gemini-1.5-flash",
-        name: "Gemini 1.5 Flash",
+        id: "gemini-3.5-flash",
+        name: "Gemini 3.5 Flash",
         provider: this.id,
-        description: "Google's stable high-speed multimodal vision model",
+        description: "High-speed multimodal vision model",
         capabilities: this.capabilities,
         contextWindow: 1000000,
+        maxOutputTokens: 8192,
+      },
+      {
+        id: "gemini-3.5-flash-lite",
+        name: "Gemini 3.5 Flash Lite",
+        provider: this.id,
+        description: "Lightweight high-efficiency model",
+        capabilities: this.capabilities,
+        contextWindow: 1000000,
+        maxOutputTokens: 8192,
+      },
+      {
+        id: "gemini-3.1-pro-preview",
+        name: "Gemini 3.1 Pro",
+        provider: this.id,
+        description: "High-reasoning deep analysis multimodal model",
+        capabilities: this.capabilities,
+        contextWindow: 2000000,
         maxOutputTokens: 8192,
       },
     ];
@@ -67,11 +85,7 @@ export class GeminiProvider extends AIProvider {
       const role = msg.role === "assistant" ? "model" : "user";
       const parts: any[] = [];
 
-      for (const c of msg.content) {
-        if (c.text) parts.push({ text: c.text });
-      }
-
-      // Include attached image binary data as inlineData & document text for Vision/Doc capabilities
+      // Include attached image binary data as inlineData & document text first
       if (isLastUserMsg && request.attachments && request.attachments.length > 0) {
         for (const file of request.attachments) {
           if (file.dataBase64) {
@@ -88,6 +102,10 @@ export class GeminiProvider extends AIProvider {
             });
           }
         }
+      }
+
+      for (const c of msg.content) {
+        if (c.text) parts.push({ text: c.text });
       }
 
       if (parts.length > 0) {
@@ -111,7 +129,7 @@ export class GeminiProvider extends AIProvider {
     const env = getServerEnv();
     const primaryModel = request.model || "gemini-3.6-flash";
     const candidateModels = Array.from(
-      new Set([primaryModel, "gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"])
+      new Set([primaryModel, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"])
     );
     const contents = this.formatContents(request);
     const startTime = Date.now();
@@ -172,7 +190,7 @@ export class GeminiProvider extends AIProvider {
     const env = getServerEnv();
     const primaryModel = request.model || "gemini-3.6-flash";
     const candidateModels = Array.from(
-      new Set([primaryModel, "gemini-3.6-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash"])
+      new Set([primaryModel, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"])
     );
     const contents = this.formatContents(request);
 
@@ -206,7 +224,7 @@ export class GeminiProvider extends AIProvider {
     if (!res || !res.body) {
       throw new AppError({
         code: "PROVIDER_ERROR",
-        message: lastErrorMsg || "All Gemini candidate models are currently experiencing high demand. Please try again in a moment.",
+        message: lastErrorMsg || "Google Gemini API error.",
         statusCode: 503,
       });
     }
