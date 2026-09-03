@@ -24,13 +24,13 @@ async function executeSearch(query: string) {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
-      signal: AbortSignal.timeout(2500), // 2.5s timeout for rich live search
+      signal: AbortSignal.timeout(4500), // 4.5s timeout for rich live search
     });
 
     if (res.ok) {
       const html = await res.text();
       const titleMatches = [...html.matchAll(/<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
-      const snippetMatches = [...html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)];
+      const snippetMatches = [...html.matchAll(/<(?:a|td|div)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|td|div)>/g)];
 
       for (let i = 0; i < Math.min(titleMatches.length, 6); i++) {
         let rawUrl = titleMatches[i][1];
@@ -47,11 +47,11 @@ async function executeSearch(query: string) {
           domain = new URL(rawUrl).hostname.replace(/^www\./, "");
         } catch {}
 
-        if (rawUrl.startsWith("http")) {
+        if (rawUrl.startsWith("http") && titleText) {
           results.push({
             title: titleText,
             url: rawUrl,
-            snippet: snippetText || `Live web search findings for ${cleanQuery}.`,
+            snippet: snippetText || `${titleText} — Live web search findings for ${cleanQuery}.`,
             domain,
           });
         }
@@ -63,19 +63,19 @@ async function executeSearch(query: string) {
 
   // Instant structured fallback if live search times out or returns zero items
   if (results.length === 0) {
-    const isFinance = /stock|share|price|market|mrf|reliance|crypto|nifty|sensex|ticker|financial/i.test(lower);
+    const isFinance = /stock|share|price|market|adani|mrf|reliance|crypto|nifty|sensex|ticker|financial/i.test(lower);
     if (isFinance) {
       results = [
         {
           title: `${cleanQuery} — Live Stock & Financial Market Data`,
-          url: `https://www.google.com/finance/quote/${encodeURIComponent(cleanQuery)}`,
+          url: `https://www.google.com/finance/quote/${encodeURIComponent(cleanQuery.replace(/\s+/g, "-"))}`,
           snippet: `Real-time share prices, financial metrics, historical performance, and key market statistics for ${cleanQuery}.`,
           domain: "google.com/finance",
         },
         {
-          title: `${cleanQuery} — Moneycontrol Stock Quote`,
-          url: `https://www.moneycontrol.com/india/stockpricequote/tyres/mrf/MRF`,
-          snippet: `Get live share price, financial results, quarterly performance, stock metrics, and market capitalisation on Moneycontrol.`,
+          title: `${cleanQuery} — Moneycontrol Stock Market Search`,
+          url: `https://www.moneycontrol.com/stocks/csearch.php?search_data=${encodeURIComponent(cleanQuery)}`,
+          snippet: `Get live share price, financial results, quarterly performance, stock metrics, and market capitalisation for ${cleanQuery}.`,
           domain: "moneycontrol.com",
         },
       ];

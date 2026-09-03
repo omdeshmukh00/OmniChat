@@ -166,36 +166,36 @@ export function MessageList({
                   </div>
                 ) : (
                   /* Normal User Message Bubble with Attachment Cards */
-                  <div className="inline-block relative group/user text-right">
-                    <div className="flex flex-col items-end gap-1.5 max-w-[85%] ml-auto">
-                      {msg.attachments && msg.attachments.length > 0 && (
-                        <div className="flex flex-wrap justify-end gap-2 mb-1">
-                          {msg.attachments.map((att: any, idx: number) => (
-                            <div
-                              key={att.id || idx}
-                              className="overflow-hidden rounded-2xl border border-borderSubtle bg-cardBg shadow-sm max-w-[220px]"
-                            >
-                              {att.type === "image" || (att.mimeType && att.mimeType.startsWith("image/")) ? (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img
-                                  src={att.url || att.previewUrl}
-                                  alt={att.name || "Attached Image"}
-                                  className="w-full max-h-48 object-cover rounded-2xl"
-                                />
-                              ) : (
-                                <div className="flex items-center gap-2 p-2.5 text-xs text-textPrimary">
-                                  <FileText className="w-4 h-4 text-emerald-500 shrink-0" />
-                                  <span className="truncate">{att.name || "Attachment"}</span>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="bg-userMsgBg border border-userMsgBorder text-userMsgText px-4 py-2.5 rounded-3xl text-[15px] leading-relaxed text-left break-words shadow-sm w-full">
+                  <div className="relative group/user text-right flex flex-col items-end max-w-[85%] ml-auto">
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="flex flex-wrap justify-end gap-2 mb-1.5">
+                        {msg.attachments.map((att: any, idx: number) => (
+                          <div
+                            key={att.id || idx}
+                            className="overflow-hidden rounded-2xl border border-borderSubtle bg-cardBg shadow-sm max-w-[220px]"
+                          >
+                            {att.type === "image" || (att.mimeType && att.mimeType.startsWith("image/")) ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={att.url || att.previewUrl}
+                                alt={att.name || "Attached Image"}
+                                className="w-full max-h-48 object-cover rounded-2xl"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-2 p-2.5 text-xs text-textPrimary">
+                                <FileText className="w-4 h-4 text-emerald-500 shrink-0" />
+                                <span className="truncate">{att.name || "Attachment"}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {msg.content && (
+                      <div className="bg-userMsgBg border border-userMsgBorder text-userMsgText px-4 py-2.5 rounded-3xl text-[15px] leading-relaxed text-left break-words whitespace-pre-wrap shadow-sm inline-block max-w-full">
                         {msg.content}
                       </div>
-                    </div>
+                    )}
 
                     {/* User Action Buttons (Edit, Copy) shown on hover */}
                     <div className="absolute right-0 top-full mt-1 flex items-center gap-1 opacity-0 group-hover/user:opacity-100 transition-opacity z-10">
