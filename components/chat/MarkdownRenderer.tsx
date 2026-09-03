@@ -1,11 +1,118 @@
 "use client";
 
-import React, { useState } from "react";
-import { Copy, Check, ExternalLink } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Copy, Check, ExternalLink, Globe } from "lucide-react";
 import katex from "katex";
 
 interface MarkdownRendererProps {
   content: string;
+}
+
+function LinkHoverPreview({
+  href,
+  linkText,
+  displayUrl,
+}: {
+  href: string;
+  linkText: string;
+  displayUrl?: string;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [faviconError, setFaviconError] = useState(false);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  let domain = "";
+  try {
+    const urlObj = new URL(href);
+    domain = urlObj.hostname;
+  } catch {
+    domain = href;
+  }
+
+  const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+  const cleanUrl = displayUrl || href;
+
+  const handleMouseEnter = () => {
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    hideTimeoutRef.current = setTimeout(() => {
+      setIsHovered(false);
+    }, 150);
+  };
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <span
+      className="relative inline-block"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-emerald-500 dark:text-emerald-400 hover:underline font-medium hover:opacity-90 inline-flex items-center gap-1 cursor-pointer break-all"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span>{linkText}</span>
+        <ExternalLink className="w-3.5 h-3.5 opacity-75 inline shrink-0" />
+      </a>
+
+      {/* ChatGPT-style Floating Hover Modal / Popover */}
+      {isHovered && (
+        <div
+          className="absolute bottom-full left-0 mb-2 z-50 flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-[#1e1e20] border border-[#333336] text-xs text-textPrimary shadow-2xl animate-fade-in pointer-events-auto whitespace-nowrap"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          {/* Domain Favicon */}
+          <div className="w-4 h-4 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-surface">
+            {!faviconError ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={faviconUrl}
+                alt={domain}
+                className="w-3.5 h-3.5 object-contain"
+                onError={() => setFaviconError(true)}
+              />
+            ) : (
+              <Globe className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+          </div>
+
+          {/* Clean Truncated URL */}
+          <span className="truncate max-w-[220px] md:max-w-[280px] font-mono text-[11.5px] text-textSecondary">
+            {cleanUrl}
+          </span>
+
+          {/* Copy Link Button */}
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="p-1 rounded-md hover:bg-[#2c2c30] text-textMuted hover:text-textPrimary transition-colors cursor-pointer shrink-0 ml-0.5"
+            title="Copy link address"
+          >
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </div>
+      )}
+    </span>
+  );
 }
 
 function MathBlock({ math, displayMode }: { math: string; displayMode: boolean }) {
@@ -299,17 +406,12 @@ function parseInlineFormatting(str: string): React.ReactNode[] {
       const rawUrl = markdownLinkMatch[2].trim().replace(/\s+/g, "");
       const linkUrl = formatUrlWithUtmSource(rawUrl);
       parts.push(
-        <a
+        <LinkHoverPreview
           key={idx}
           href={linkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-emerald-500 dark:text-emerald-400 hover:underline font-medium hover:opacity-90 inline-flex items-center gap-1 cursor-pointer break-all"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span>{linkText}</span>
-          <ExternalLink className="w-3 h-3 opacity-70 inline shrink-0" />
-        </a>
+          linkText={linkText}
+          displayUrl={rawUrl}
+        />
       );
       return;
     }
@@ -319,17 +421,12 @@ function parseInlineFormatting(str: string): React.ReactNode[] {
       const rawUrl = token.trim();
       const cleanUrl = formatUrlWithUtmSource(rawUrl);
       parts.push(
-        <a
+        <LinkHoverPreview
           key={idx}
           href={cleanUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-emerald-500 dark:text-emerald-400 hover:underline font-medium hover:opacity-90 inline-flex items-center gap-1 cursor-pointer break-all"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span>{rawUrl}</span>
-          <ExternalLink className="w-3 h-3 opacity-70 inline shrink-0" />
-        </a>
+          linkText={rawUrl}
+          displayUrl={rawUrl}
+        />
       );
       return;
     }
